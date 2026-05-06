@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+build/
+dist/
+*.build/
+*.dist/
+*.onefile-build/
+*.spec
+.cache/
+*.log
+.spotify_cache
+LyricDisplay.exe

@@ -1,0 +1,8 @@
+pygame>=2.5
+spotipy>=2.23
+requests>=2.31
+Pillow>=10.0
+numpy>=1.24
+platformdirs>=4.0
+arabic-reshaper>=3.0
+python-bidi>=0.4
