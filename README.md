@@ -25,7 +25,7 @@ This app reads your Spotify "Now Playing", so you'll create your own free Spotif
 2. Click **Create app**.
 3. Fill in:
    - **App name**: anything you want
-   - **Redirect URI**: `http://127.0.0.1:8888/callback` &nbsp;*(exact — no trailing slash)*
+   - **Redirect URI**: `http://127.0.0.1:8888/callback` &nbsp;*(exact - no trailing slash)*
    - Check the **Web API** box
 4. Save → open the new app → **Settings** → copy your **Client ID**.
 5. Run Lyric Display once. It'll open the config folder for you.
@@ -33,7 +33,7 @@ This app reads your Spotify "Now Playing", so you'll create your own free Spotif
 ```json
    { "client_id": "paste_your_id_here" }
 ```
-7. Save the file and reopen the app. Your browser will open Spotify's login page once — authorize it and you're done.
+7. Save the file and reopen the app. Your browser will open Spotify's login page once - authorize it and you're done.
 
 ## Controls
 
@@ -49,11 +49,11 @@ This app reads your Spotify "Now Playing", so you'll create your own free Spotif
 
 ## Troubleshooting
 
-- **A black command-prompt window opens alongside the app**: That's expected — closing it will close the app. Just minimize it.
+- **A black command-prompt window opens alongside the app**: That's expected - closing it will close the app. Just minimize it.
 - **"Invalid redirect URI"**: Your redirect URI in step 3 doesn't match exactly. Trailing slashes count, `http` vs `https` counts.
 - **"User not registered"**: In your Spotify Developer dashboard go to **Settings → User Management** and add your own Spotify account email.
 - **Exe won't launch / missing DLL error**: Install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
-- **No lyrics for a song**: The lyrics services don't have it. You can drop your own `.lrc` file onto the window — it'll cache for future plays.
+- **No lyrics for a song**: The lyrics services don't have it. You can drop your own `.lrc` file onto the window - it'll cache for future plays.
 
 ## Building from source
 
@@ -80,4 +80,4 @@ python -m nuitka --onefile --windows-console-mode=force --windows-icon-from-ico=
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT - see [LICENSE](LICENSE) for details.
