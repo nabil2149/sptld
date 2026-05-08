@@ -5,7 +5,7 @@ import time
 import threading
 import requests
 import spotipy
-from spotipy.oauth2 import SpotifyPKCE      # was SpotifyOAuth — now PKCE
+from spotipy.oauth2 import SpotifyPKCE      # was SpotifyOAuth - now PKCE
 from PIL import Image, ImageDraw, ImageFilter
 import io
 import re
@@ -22,6 +22,7 @@ import ctypes
 import platform
 import logging
 
+# 333 + 2149 = 2482!!!
 # =========================
 # Config dir + paths
 # =========================
@@ -92,7 +93,7 @@ _WS_SYSMENU = 0x00080000
 def _strip_caption():
     """
     Remove the title bar but keep native resize border, snap, and minimize/maximize.
-    Window starts as a normal resizable window — we just hide the caption strip on top.
+    Window starts as a normal resizable window - we just hide the caption strip on top.
     """
     if not _IS_WIN:
         return
@@ -238,7 +239,7 @@ def show_first_run_setup():
     except Exception:
         pass
 
-    pygame.display.set_caption("Lyric Display — Setup")
+    pygame.display.set_caption("Lyric Display - Setup")
     surf = pygame.display.set_mode((720, 360))
     font_big = pygame.font.SysFont("Arial", 28, bold=True)
     font_sm  = pygame.font.SysFont("Arial", 18)
@@ -329,10 +330,10 @@ track_duration_ms: int = 0
 is_loading: bool = False
 loading_started_at: float = 0.0
 
-# Persistent lyric surface — reused every frame, never reallocated
+# Persistent lyric surface - reused every frame, never reallocated
 _lyric_surf_cache: dict = {"surf": None, "size": (0, 0)}
 
-# Cached lyric layout — recomputed only on song/size/font change
+# Cached lyric layout - recomputed only on song/size/font change
 layout_cache: dict = {
     "song_id": None,
     "width": 0,
@@ -345,7 +346,7 @@ layout_cache: dict = {
 }
 
 # ================
-# Arabic / RTL support — auto-install if needed, pure-Python fallback
+# Arabic / RTL support - auto-install if needed, pure-Python fallback
 # ================
 _RTL_RE = re.compile(r'[\u0600-\u06FF\u0590-\u05FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]')
 
@@ -378,7 +379,7 @@ except ImportError:
         log.info("arabic-reshaper installed and loaded")
     except ImportError:
         HAS_BIDI = False
-        log.warning("Arabic reshaper unavailable — using built-in fallback")
+        log.warning("Arabic reshaper unavailable - using built-in fallback")
 
 # ── Pure-Python Arabic reshaper fallback ─────────────────────────────────────
 # Covers the most common Arabic letter forms so text connects correctly
@@ -425,7 +426,7 @@ _NON_JOINING = {0x0627,0x062F,0x0630,0x0631,0x0632,0x0648,0x0629,0x0649,0x0622,0
 
 def _reshape_fallback(text: str) -> str:
     """
-    Pure-Python Arabic reshaper — connects letters in the correct contextual form.
+    Pure-Python Arabic reshaper - connects letters in the correct contextual form.
     Used only when arabic-reshaper package is unavailable.
     """
     words = text.split(' ')
@@ -478,21 +479,31 @@ def shape_text(text: str) -> str:
 # Fonts (multi-script: Latin / Arabic / CJK, with weights)
 # ================
 
-# CJK: Chinese, Japanese, Korean, plus halfwidth/fullwidth forms
-_CJK_RE = re.compile(
-    r'[\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF'
-    r'\uAC00-\uD7AF\uFF00-\uFFEF\u3100-\u312F]'
-)
+# Per-script detection - order matters in _detect_script.
+# Korean: Hangul syllables + Jamo + Compatibility Jamo
+_KOREAN_RE   = re.compile(r'[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]')
+
+# Japanese: Hiragana + Katakana. If text has kana it's Japanese
+# (even if it also contains kanji, which is shared with Chinese).
+_JAPANESE_RE = re.compile(r'[\u3040-\u309F\u30A0-\u30FF]')
+
+# Chinese (Han): CJK Unified Ideographs + Extension A + Bopomofo.
+# Detected only if no kana present.
+_HAN_RE      = re.compile(r'[\u4E00-\u9FFF\u3400-\u4DBF\u3100-\u312F]')
 
 _THAI_RE = re.compile(r'[\u0E00-\u0E7F]')
 _DEVA_RE = re.compile(r'[\u0900-\u097F]')
 
 def _detect_script(text: str) -> str:
-    """Return 'arabic', 'cjk', or 'latin' based on what's in the text."""
-    if _RTL_RE.search(text):  return 'arabic'
-    if _CJK_RE.search(text):  return 'cjk'
-    if _THAI_RE.search(text): return 'thai'
-    if _DEVA_RE.search(text): return 'devanagari'
+    """Return script tag for font selection. Order matters: Japanese (kana)
+    must be checked before Chinese (Han), since Japanese uses Han too."""
+    if not text:                  return 'latin'
+    if _RTL_RE.search(text):      return 'arabic'
+    if _KOREAN_RE.search(text):   return 'korean'
+    if _JAPANESE_RE.search(text): return 'japanese'
+    if _HAN_RE.search(text):      return 'chinese'
+    if _THAI_RE.search(text):     return 'thai'
+    if _DEVA_RE.search(text):     return 'devanagari'
     return 'latin'
 
 
@@ -502,60 +513,76 @@ class FontCache:
     # Search order: bundled in fonts/ → CONFIG_DIR → CWD → system
     _CANDIDATES = {
         ('latin', 'regular'): [
+            _resource_path("fonts/NotoSans-Medium.ttf"),
             _resource_path("fonts/SpotifyMix-Medium.ttf"),
             _resource_path("fonts/Inter-Regular.ttf"),
             "SpotifyMix-Medium.ttf",
         ],
         ('latin', 'bold'): [
+            _resource_path("fonts/NotoSans-Bold.ttf"),
             _resource_path("fonts/SpotifyMix-Bold.ttf"),
             _resource_path("fonts/Inter-Bold.ttf"),
             "SpotifyMix-Bold.ttf",
         ],
         ('arabic', 'regular'): [
+            _resource_path("fonts/NotoSansArabic-Medium.ttf"),
             _resource_path("fonts/Amiri-Regular.ttf"),
-            _resource_path("fonts/NotoNaskhArabic-Regular.ttf"),
-            os.path.join(CONFIG_DIR, "Amiri-Regular.ttf"),
-            "Amiri-Regular.ttf",
+            os.path.join(CONFIG_DIR, "NotoSansArabic-Medium.ttf"),
+            "NotoSansArabic-Medium.ttf",
             "/System/Library/Fonts/Supplemental/GeezaPro.ttc",
             "C:/Windows/Fonts/tahoma.ttf",
-            "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/Amiri-Regular.ttf",
         ],
         ('arabic', 'bold'): [
+            _resource_path("fonts/NotoSansArabic-Bold.ttf"),
             _resource_path("fonts/Amiri-Bold.ttf"),
-            _resource_path("fonts/NotoNaskhArabic-Bold.ttf"),
-            os.path.join(CONFIG_DIR, "Amiri-Bold.ttf"),
-            "Amiri-Bold.ttf",
+            os.path.join(CONFIG_DIR, "NotoSansArabic-Bold.ttf"),
+            "NotoSansArabic-Bold.ttf",
             "C:/Windows/Fonts/tahomabd.ttf",
-            "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/Amiri-Bold.ttf",
         ],
-        ('cjk', 'regular'): [
-            _resource_path("fonts/NotoSansSC-Regular.ttf"),
-            _resource_path("fonts/NotoSansTC-Regular.ttf"),
-            _resource_path("fonts/NotoSansJP-Regular.ttf"),
-            _resource_path("fonts/NotoSansKR-Regular.ttf"),
-            "C:/Windows/Fonts/msyh.ttc",      # Microsoft YaHei (Chinese)
-            "C:/Windows/Fonts/msgothic.ttc",  # MS Gothic (Japanese)
-            "C:/Windows/Fonts/malgun.ttf",    # Malgun Gothic (Korean)
+        ('chinese', 'regular'): [
+            _resource_path("fonts/NotoSansSC-Medium.ttf"),
+            _resource_path("fonts/NotoSansTC-Medium.ttf"),
+            "C:/Windows/Fonts/msyh.ttc",  # Microsoft YaHei
             "/System/Library/Fonts/PingFang.ttc",
             "/System/Library/Fonts/Hiragino Sans GB.ttc",
         ],
-        ('cjk', 'bold'): [
+        ('chinese', 'bold'): [
             _resource_path("fonts/NotoSansSC-Bold.ttf"),
             _resource_path("fonts/NotoSansTC-Bold.ttf"),
-            _resource_path("fonts/NotoSansJP-Bold.ttf"),
-            _resource_path("fonts/NotoSansKR-Bold.ttf"),
             "C:/Windows/Fonts/msyhbd.ttc",
-            "C:/Windows/Fonts/msgothic.ttc",
             "/System/Library/Fonts/PingFang.ttc",
         ],
+        ('japanese', 'regular'): [
+            _resource_path("fonts/NotoSansJP-Medium.ttf"),
+            "C:/Windows/Fonts/YuGothR.ttc",  # Yu Gothic
+            "C:/Windows/Fonts/msgothic.ttc",  # MS Gothic
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        ],
+        ('japanese', 'bold'): [
+            _resource_path("fonts/NotoSansJP-Bold.ttf"),
+            "C:/Windows/Fonts/YuGothB.ttc",
+            "C:/Windows/Fonts/msgothic.ttc",
+        ],
+        ('korean', 'regular'): [
+            _resource_path("fonts/NotoSansKR-Medium.ttf"),
+            "C:/Windows/Fonts/malgun.ttf",  # Malgun Gothic
+            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        ],
+        ('korean', 'bold'): [
+            _resource_path("fonts/NotoSansKR-Bold.ttf"),
+            "C:/Windows/Fonts/malgunbd.ttf",
+            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        ],
         ('thai', 'regular'): [
-            _resource_path("fonts/NotoSansThai-Regular.ttf"),
+            _resource_path("fonts/NotoSansThai-Medium.ttf"),
         ],
         ('thai', 'bold'): [
             _resource_path("fonts/NotoSansThai-Bold.ttf"),
         ],
         ('devanagari', 'regular'): [
-            _resource_path("fonts/NotoSansDevanagari-Regular.ttf"),
+            _resource_path("fonts/NotoSansDevanagari-Medium.ttf"),
         ],
         ('devanagari', 'bold'): [
             _resource_path("fonts/NotoSansDevanagari-Bold.ttf"),
@@ -570,7 +597,7 @@ class FontCache:
             if self.paths[key]:
                 log.info(f"Font {key}: {self.paths[key]}")
             else:
-                log.warning(f"Font {key}: NONE found — will use system fallback")
+                log.warning(f"Font {key}: NONE found - will use system fallback")
 
     @staticmethod
     def _first_existing(paths):
@@ -717,10 +744,10 @@ def create_rounded_album_art(
 # Background rendering
 # =====================
 
-# Background quality presets  — (compute_w, compute_h, refresh_interval_s)
-# Performance: 60×34  @ 24fps refresh  — silky smooth, minimal CPU
-# Medium:      120×68 @ 30fps refresh  — balanced (default)
-# Detailed:    240×135@ 60fps refresh  — full quality, matches display
+# Background quality presets  - (compute_w, compute_h, refresh_interval_s)
+# Performance: 60×34  @ 24fps refresh  - silky smooth, minimal CPU
+# Medium:      120×68 @ 30fps refresh  - balanced (default)
+# Detailed:    240×135@ 60fps refresh  - full quality, matches display
 _BG_QUALITY_PRESETS = {
     "Performance": (60,  34,  1/24),
     "Medium":      (120, 68,  1/30),
@@ -731,7 +758,7 @@ def _get_bg_params():
     q = prefs.get("bg_quality", "Medium")
     return _BG_QUALITY_PRESETS.get(q, _BG_QUALITY_PRESETS["Medium"])
 
-# Meshgrid cache — rebuilt only when quality setting changes
+# Meshgrid cache - rebuilt only when quality setting changes
 _bg_grid_cache: dict = {"q": None, "NX": None, "NY": None}
 _bg_cache: dict = {"surf": None, "t_last": -999.0, "key": None}
 
@@ -748,7 +775,7 @@ def _ensure_bg_grid():
 
 import queue as _queue
 
-# Single persistent background worker — never re-spawned, no thread overhead
+# Single persistent background worker - never re-spawned, no thread overhead
 _bg_req_q:  _queue.Queue = _queue.Queue(maxsize=1)
 _bg_res_q:  _queue.Queue = _queue.Queue(maxsize=1)
 
@@ -809,7 +836,7 @@ def draw_smooth_fluid_background(
 ) -> None:
     """
     Persistent-worker background: one long-lived thread, queue-based handoff.
-    Main loop never stalls — always blits the last completed frame.
+    Main loop never stalls - always blits the last completed frame.
     """
     BG_NX, BG_NY = _ensure_bg_grid()
     _, _, interval = _get_bg_params()
@@ -910,7 +937,7 @@ def auto_time_unsynced(unsynced_text: str, duration_ms: int) -> list[tuple[float
 
 
 def wrap_text(text: str, font: pygame.font.Font, max_width: int) -> list[str]:
-    """Word-wrap. Passes raw text through — shaping happens at render time."""
+    """Word-wrap. Passes raw text through - shaping happens at render time."""
     words = text.split()
     if not words:
         return []
@@ -973,7 +1000,7 @@ def draw_text_with_motion_blur(
 ) -> None:
     """
     Render text with optional faux motion blur. Aligns RTL text to the right.
-    Shape happens ONCE here — never call shape_text before passing text in.
+    Shape happens ONCE here - never call shape_text before passing text in.
     Set pre_shaped=True only if text was already shaped externally.
     """
     x, y = pos
@@ -1285,19 +1312,24 @@ def draw_loading_overlay(W: int, H: int, scale: float, t_elapsed: float):
 
 
 # ==============
-# FIX #2: No-lyrics mode — clean centered album cover, no overlap
+# FIX #2: No-lyrics mode - clean centered album cover, no overlap
 # ==============
 
 def draw_no_lyrics_view(W: int, H: int, scale: float, info_color: tuple):
     """Render centered album art + track info. Never draws the top-right art."""
+    title_script  = _detect_script(current_song_name)
+    artist_script = _detect_script(current_artist)
+    title_for_render  = shape_text(current_song_name) if title_script  == 'arabic' else current_song_name
+    artist_for_render = shape_text(current_artist)    if artist_script == 'arabic' else current_artist
+
     if not album_art_surface:
-        # No art either — just show track name centered
+        # No art either - just show track name centered
         if current_song_name:
-            font = FONTS.get("bold", int(32 * scale))
-            s = font.render(current_song_name, True, info_color)
+            font = FONTS.get("bold", int(32 * scale), script=title_script)
+            s = font.render(title_for_render, True, info_color)
             screen.blit(s, s.get_rect(center=(W // 2, H // 2 - 20)))
-            af = FONTS.get("regular", int(22 * scale))
-            a = af.render(current_artist, True, info_color)
+            af = FONTS.get("regular", int(22 * scale), script=artist_script)
+            a = af.render(artist_for_render, True, info_color)
             screen.blit(a, a.get_rect(center=(W // 2, H // 2 + 24)))
         return
 
@@ -1310,11 +1342,11 @@ def draw_no_lyrics_view(W: int, H: int, scale: float, info_color: tuple):
 
     if current_song_name:
         max_w = min(W - 80, cover_size + 120)
-        title_font = FONTS.get("bold", max(16, int(28 * scale)))
-        artist_font = FONTS.get("regular", max(13, int(20 * scale)))
+        title_font  = FONTS.get("bold",    max(16, int(28 * scale)), script=title_script)
+        artist_font = FONTS.get("regular", max(13, int(20 * scale)), script=artist_script)
 
         # Wrapped title
-        title_lines = wrap_text(current_song_name, title_font, max_w)
+        title_lines = wrap_text(title_for_render, title_font, max_w)
         ty = art_rect.bottom + int(18 * scale)
         for i, line in enumerate(title_lines):
             s = title_font.render(line, True, info_color)
@@ -1322,7 +1354,7 @@ def draw_no_lyrics_view(W: int, H: int, scale: float, info_color: tuple):
 
         # Artist below title
         ay = ty + len(title_lines) * (title_font.get_linesize() + 4) + int(8 * scale)
-        a = artist_font.render(current_artist, True, info_color)
+        a = artist_font.render(artist_for_render, True, info_color)
         screen.blit(a, a.get_rect(midtop=(W // 2, ay)))
 
 
@@ -1381,20 +1413,26 @@ def draw_lyrics_view(
     # --- Song info (below album art) ---
     title_px = max(16, min(int(28 * font_scale), 56))
     artist_px = max(13, min(int(20 * font_scale), 48))
-    title_font = FONTS.get("regular", title_px)
-    artist_font = FONTS.get("bold", artist_px)
+    # Detect script per field so non-Latin titles/artists don't render as boxes
+    title_script = _detect_script(current_song_name)
+    artist_script = _detect_script(current_artist)
+    title_font = FONTS.get("regular", title_px, script=title_script)
+    artist_font = FONTS.get("bold", artist_px, script=artist_script)
     info_color_local = info_color  # separate from lyric highlight color
 
     if album_rect and current_song_name:
         max_title_w = album_rect.w
-        title_lines = wrap_text(current_song_name, title_font, max_title_w)
+        # Shape Arabic once before render
+        title_for_render = shape_text(current_song_name) if title_script == 'arabic' else current_song_name
+        artist_for_render = shape_text(current_artist) if artist_script == 'arabic' else current_artist
+        title_lines = wrap_text(title_for_render, title_font, max_title_w)
         top_y = album_rect.bottom + max(8, int(10 * scale))
         for i, line in enumerate(title_lines):
             s = title_font.render(line, True, info_color_local)
             r = s.get_rect(midtop=(album_rect.centerx, top_y + i * (title_font.get_linesize() + 4)))
             screen.blit(s, r)
         ay = top_y + len(title_lines) * (title_font.get_linesize() + 4) + max(4, int(6 * scale))
-        a = artist_font.render(current_artist, True, info_color_local)
+        a = artist_font.render(artist_for_render, True, info_color_local)
         screen.blit(a, a.get_rect(midtop=(album_rect.centerx, ay)))
 
     # --- Lyric area geometry ---
@@ -1434,7 +1472,7 @@ def draw_lyrics_view(
     viewport_h = max(100, H - top_margin - bottom_margin)
     viewport_w = max(220, max_lyric_width + left_pad + 20)
 
-    # Per-line render cache (font.render is expensive — cache by text+color+size)
+    # Per-line render cache (font.render is expensive - cache by text+color+size)
     if not hasattr(draw_lyrics_view, '_line_cache'):
         draw_lyrics_view._line_cache = {}
         draw_lyrics_view._line_cache_song = None
@@ -1442,7 +1480,7 @@ def draw_lyrics_view(
         draw_lyrics_view._line_cache.clear()
         draw_lyrics_view._line_cache_song = id(current_lyrics)
 
-    # Reuse persistent surface — avoids 2.5MB heap allocation every frame
+    # Reuse persistent surface - avoids 2.5MB heap allocation every frame
     if (_lyric_surf_cache["surf"] is None or
             _lyric_surf_cache["size"] != (viewport_w, viewport_h)):
         _lyric_surf_cache["surf"] = pygame.Surface((viewport_w, viewport_h), pygame.SRCALPHA)
@@ -1502,7 +1540,7 @@ def draw_lyrics_view(
 
         y_cursor += heights_with_spacing[i]
 
-    # Fade mask — built once and cached (rebuilding 160 rows per frame is expensive)
+    # Fade mask - built once and cached (rebuilding 160 rows per frame is expensive)
     if fade_h > 0:
         fade_key = (viewport_w, viewport_h, fade_h)
         if not hasattr(draw_lyrics_view, "_fade_cache") or draw_lyrics_view._fade_cache[0] != fade_key:
@@ -1549,7 +1587,7 @@ while running:
     last_time = now
     bg_time += dt
     # Wrap to keep sin() inputs from growing unbounded in long sessions.
-    _BG_WRAP = 41.9  # ~2*pi/0.15 (Normal theme period — safe for all themes)
+    _BG_WRAP = 41.9  # ~2*pi/0.15 (Normal theme period - safe for all themes)
     if bg_time > _BG_WRAP * 10:
         bg_time = bg_time % _BG_WRAP
 
@@ -1700,7 +1738,7 @@ while running:
         SPACING = max(10, int(round(22 * (lyric_px / 36.0))))
 
         # ── Compute the EXACT same max_lyric_width as draw_lyrics_view uses ──
-        # This is critical — if we wrap at a different width here, block heights
+        # This is critical - if we wrap at a different width here, block heights
         # will differ from what's drawn, and the scroll target will be wrong.
         cover_padding = 20
         base_cover = 300
@@ -1718,7 +1756,7 @@ while running:
         else:
             scroll_max_lyric_w = max(220, W - left_pad - max(24, int(0.04 * W)))
 
-        # Only recompute wrapping when song, width, or font changes — NOT every frame
+        # Only recompute wrapping when song, width, or font changes - NOT every frame
         _lc = layout_cache
         if (_lc["song_id"] != current_song_id
                 or _lc["width"] != scroll_max_lyric_w
@@ -1729,9 +1767,16 @@ while running:
             for _, text in current_lyrics:
                 script = _detect_script(text)
                 rtl = (script == 'arabic')
-                font_tmp = FONTS.get('regular', lyric_px, script=script)
+                # Wrap using the BOLD font (current/highlighted line is bold,
+                # which is wider than regular). For Latin, bold also renders at
+                # 1.05x - match draw_lyrics_view's bold_font sizing exactly.
+                if script == 'latin':
+                    wrap_size = max(20, min(int(lyric_px * 1.05), 80))
+                else:
+                    wrap_size = lyric_px
+                font_tmp = FONTS.get('bold', wrap_size, script=script)
                 lines_tmp = wrap_text(text, font_tmp, scroll_max_lyric_w)
-                _wrapped.append((lines_tmp, rtl, script))  # ← now 3-tuple
+                _wrapped.append((lines_tmp, rtl, script))
                 _heights.append(len(lines_tmp) * LINE_H)
             _hspacing = [
                 h + (SPACING if i < len(_heights) - 1 else 0)
